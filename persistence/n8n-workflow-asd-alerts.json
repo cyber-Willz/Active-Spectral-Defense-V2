@@ -1,0 +1,144 @@
+{
+  "name": "ASD Alert Router",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "asd-alerts",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook1",
+      "name": "ASD Event Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300],
+      "webhookId": "asd-alerts"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [
+                  {
+                    "leftValue": "={{$json.severity}}",
+                    "rightValue": "critical",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "critical"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [
+                  {
+                    "leftValue": "={{$json.severity}}",
+                    "rightValue": "high",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "high"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "switch1",
+      "name": "Route by Severity",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "msg1",
+              "name": "message",
+              "type": "string",
+              "value": "=🔴 CRITICAL — {{$json.type}} on {{$json.host || $json.path}} ({{$json.event || $json.disposition}}) at {{$json.ts}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "format-critical",
+      "name": "Format Critical Message",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [720, 200]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "msg2",
+              "name": "message",
+              "type": "string",
+              "value": "=🟠 High — {{$json.type}} on {{$json.host || $json.path}} (confidence {{$json.confidence}}) at {{$json.ts}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "format-high",
+      "name": "Format High Message",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [720, 400]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "notify-critical",
+      "name": "Notify (swap for Slack/Email/Jira)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [960, 200],
+      "notes": "Replace this NoOp node with a Slack, Microsoft Teams, Email, or Jira/ServiceNow node. Use {{$json.message}} as the body. Kept as NoOp here so the workflow imports cleanly without requiring a credential to be configured first."
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "notify-high",
+      "name": "Notify (swap for Slack/Email/Jira)1",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [960, 400],
+      "notes": "Same as the critical branch's note -- point this at your actual alerting channel."
+    }
+  ],
+  "connections": {
+    "ASD Event Webhook": {
+      "main": [[{ "node": "Route by Severity", "type": "main", "index": 0 }]]
+    },
+    "Route by Severity": {
+      "main": [
+        [{ "node": "Format Critical Message", "type": "main", "index": 0 }],
+        [{ "node": "Format High Message", "type": "main", "index": 0 }]
+      ]
+    },
+    "Format Critical Message": {
+      "main": [[{ "node": "Notify (swap for Slack/Email/Jira)", "type": "main", "index": 0 }]]
+    },
+    "Format High Message": {
+      "main": [[{ "node": "Notify (swap for Slack/Email/Jira)1", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" }
+}

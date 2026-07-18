@@ -1,0 +1,40 @@
+[workspace]
+resolver = "2"
+members = [
+    "bridges/asd-xdp-bridge",
+    "bridges/asd-clamav-bridge",
+    "bridges/asd-spectral-bridge",
+    "bridges/asd-firewall-sync",
+    "orchestrator",
+    "harness/containment-demo",
+]
+
+# Deliberately does NOT list anything under components/. Each of
+# firewall-perimeter, nsm-xdp, rust-clam, spec-engine, and active-siem is
+# already its own Cargo workspace (that's how they shipped, and none of
+# them are modified here). Cargo supports path dependencies that reach
+# into a *different* workspace's member crates -- the crate being
+# depended on doesn't need to change workspaces, it just gets pulled into
+# this workspace's dependency graph and built with this workspace's own
+# Cargo.lock. See README.md's "Why five workspaces, not one" section.
+
+[workspace.package]
+edition = "2021"
+# version is required here (even though this workspace's own crates don't
+# use workspace-inherited versions) because path deps reaching into
+# components/rust-clam's crates (e.g. rclam-quarantine) use
+# `version.workspace = true`. Cargo resolves that inheritance against the
+# nearest workspace root on disk for the *current* build -- which, once
+# those crates are pulled in as path deps here, is this workspace, not
+# rust-clam's own. This does not modify anything under components/.
+version = "0.1.0"
+
+[patch.crates-io]
+# burn-core 0.13.2 (a crates.io dep of components/active-siem's siem-ml /
+# siem-server, pulled in transitively via siem-review -> siem-ml, NOT a
+# components/ edit) was written against bincode's 2.0.0-rc.3 pre-release
+# API. crates.io's now-stable bincode 2.0.1 renamed the function it calls
+# (decode_borrowed_from_slice -> decode_from_slice for this
+# DeserializeOwned call site). Vendored locally with that one call fixed;
+# see vendor/burn-core-0.13.2/src/record/memory.rs.
+burn-core = { path = "vendor/burn-core-0.13.2" }

@@ -1,0 +1,10 @@
+[package]
+name = "asd-spectral-bridge"
+version = "0.1.0"
+edition = "2021"
+description = "Spectral engine (HNSW + Jacobi analysis) -> Anomaly scoring lane, plus the containment -> anomaly-scoring feedback loop. Wraps spec_engine::QdrantSpectralSecurityEngine for siem-correlation::SpectralSender and for recording confirmed threats back into the graph."
+
+[dependencies]
+siem-correlation = { path = "../../components/active-siem/crates/siem-correlation" }
+spec_engine = { path = "../../components/spec-engine" }
+tracing = "0.1"

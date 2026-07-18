@@ -1,0 +1,17 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/siem-core",
+    "crates/siem-collector",
+    "crates/siem-rules",
+    "crates/siem-ml",
+    "crates/siem-response",
+    "crates/siem-review",
+    "crates/siem-correlation",
+    "crates/siem-correlation-bridge",
+    "crates/siem-store",
+    "crates/siem-notify",
+    "crates/siem-server",
+    "crates/ontology-engine",
+    "crates/review-queue",
+]

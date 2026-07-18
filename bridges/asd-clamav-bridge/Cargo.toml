@@ -1,0 +1,13 @@
+[package]
+name = "asd-clamav-bridge"
+version = "0.1.0"
+edition = "2021"
+description = "ClamAV scan -> Quarantine action lane. Watches per-host file-drop directories with rust-clam's real Scanner/QuarantineManager and submits siem-correlation::ClamAvSender events for what it finds."
+
+[dependencies]
+siem-correlation = { path = "../../components/active-siem/crates/siem-correlation" }
+scanner-core = { path = "../../components/rust-clam/crates/scanner-core" }
+rclam-quarantine = { path = "../../components/rust-clam/crates/rclam-quarantine" }
+notify = "6"
+thiserror = "1"
+tracing = "0.1"

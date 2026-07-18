@@ -1,0 +1,16 @@
+[package]
+name = "asd-xdp-bridge"
+version = "0.1.0"
+edition = "2021"
+description = "NSM fast path -> XDP enforcement lane. Tails nsm's newline-delimited JSON alert stream and submits siem-correlation::XdpSender events; on containment confirmation, issues BLOCK over nsm's XDP control Unix socket."
+
+[dependencies]
+siem-correlation = { path = "../../components/active-siem/crates/siem-correlation" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["fs", "io-util", "rt", "macros", "time"] }
+thiserror = "1"
+tracing = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "test-util"] }

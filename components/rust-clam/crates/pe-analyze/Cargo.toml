@@ -1,0 +1,10 @@
+[package]
+name = "pe-analyze"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+thiserror = "1.0"
+
+[dev-dependencies]
+proptest = "1"

@@ -1,0 +1,46 @@
+[package]
+name = "active-spectral-defense"
+version = "0.1.0"
+edition = "2021"
+description = "Wires the perimeter firewall, NSM/XDP, ClamAV-style scanning, the spectral engine, and active-siem's correlation/containment stack together per architecture_with_firewall_perimeter.svg."
+
+[[bin]]
+name = "active-spectral-defense"
+path = "src/main.rs"
+
+[dependencies]
+# active-siem crates (correlation fan-in, containment, review gate)
+siem-core = { path = "../components/active-siem/crates/siem-core" }
+siem-correlation = { path = "../components/active-siem/crates/siem-correlation" }
+siem-correlation-bridge = { path = "../components/active-siem/crates/siem-correlation-bridge" }
+siem-response = { path = "../components/active-siem/crates/siem-response" }
+siem-review = { path = "../components/active-siem/crates/siem-review" }
+review_queue = { path = "../components/active-siem/crates/review-queue" }
+
+# spectral engine (real Laplacian / Fiedler / HNSW)
+spec_engine = { path = "../components/spec-engine" }
+# spec_engine uses burn::backend::ndarray::NdArrayDevice as its device
+# type but does not re-export it, so this integration layer needs the
+# exact same burn version as spec_engine's own Cargo.toml to construct
+# one -- see main.rs.
+burn = { version = "0.21.0", features = ["ndarray", "autodiff"] }
+
+# ClamAV-style scanner (for constructing the Scanner passed to the ClamAV lane)
+scanner-core = { path = "../components/rust-clam/crates/scanner-core" }
+sig-engine = { path = "../components/rust-clam/crates/sig-engine" }
+rclam-quarantine = { path = "../components/rust-clam/crates/rclam-quarantine" }
+
+# this integration layer's own bridges
+asd-xdp-bridge = { path = "../bridges/asd-xdp-bridge" }
+asd-clamav-bridge = { path = "../bridges/asd-clamav-bridge" }
+asd-spectral-bridge = { path = "../bridges/asd-spectral-bridge" }
+asd-firewall-sync = { path = "../bridges/asd-firewall-sync" }
+
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "io-util", "signal"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }

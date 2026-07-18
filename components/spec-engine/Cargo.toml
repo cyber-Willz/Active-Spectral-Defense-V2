@@ -1,0 +1,50 @@
+[package]
+name = "spec_engine"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "spec_engine"
+path = "src/lib.rs"
+
+[[bin]]
+name = "spec_engine"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+crossbeam-channel = "0.5.15"
+minreq = { version = "3.0.0", features = ["json-using-serde"] }
+
+# Burn Deep Learning Stack
+burn = { version = "0.21.0", features = ["ndarray", "autodiff"] }
+burn-ndarray = "0.21.0"
+
+qdrant-client = "1.18.0"
+
+tokio = { version = "1.52.3", features = ["full"] }
+reqwest = { version = "0.13.4", default-features = true, features = ["json"] }
+
+fastrand = "2.4.1"
+
+# Structured error handling
+thiserror = "2.0.18"
+
+# Logging
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+
+anyhow = "1.0.102"
+
+clap = { version = "4.6.1", features = ["derive"] }
+env_logger = "0.11.10"
+log = "0.4.33"
+
+hnsw_rs = "0.3.4"
+anndists = "0.1.5"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

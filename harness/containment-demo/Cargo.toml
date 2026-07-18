@@ -1,0 +1,8 @@
+[package]
+name = "containment-demo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+asd-firewall-sync = { path = "../../bridges/asd-firewall-sync" }
+anyhow = "1"

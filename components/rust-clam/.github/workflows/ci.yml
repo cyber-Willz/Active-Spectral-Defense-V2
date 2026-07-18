@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Real coverage-guided fuzzing (fuzz-run, below) runs on this schedule
+    # rather than on every push/PR, since even a bounded-time run across
+    # 8 targets adds several minutes that most pushes don't need to wait
+    # on. Daily is frequent enough to catch a regression within a day of
+    # it landing.
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build
+        run: cargo build --workspace --verbose
+      - name: Test
+        run: cargo test --workspace --verbose
+
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-audit
+      - run: cargo audit
+
+  fuzz-build:
+    # Sanity-builds the fuzz targets on every PR so API drift in the
+    # scanned crates (archive-guard, sig-engine, pe-analyze) is caught
+    # immediately, without needing a long libFuzzer run on every push.
+    # Actual fuzzing (`cargo fuzz run <target>`) is the separate fuzz-run
+    # job below, on a schedule -- see fuzz/README.md.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: taiki-e/install-action@cargo-fuzz
+      - working-directory: fuzz
+        run: |
+          for t in fuzz_pe_parse fuzz_hexsig_ndb fuzz_hashdb fuzz_zip_extract fuzz_gzip_extract fuzz_tar_extract fuzz_7z_extract fuzz_cab_extract; do
+            cargo fuzz build "$t"
+          done
+
+  fuzz-run:
+    # Actual coverage-guided execution of every libFuzzer target, bounded
+    # to a couple of minutes each so the whole matrix finishes quickly in
+    # parallel. This is what closes the "compiled scaffold, never
+    # executed" gap noted in fuzz/README.md and this project's README:
+    # unlike the sandboxed environment these harnesses were originally
+    # added from (no network access to a nightly toolchain), GitHub's
+    # runners have full internet access, so this genuinely runs
+    # coverage-guided fuzzing against every extractor/parser on a
+    # schedule, not just on-demand from a contributor's machine.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - fuzz_pe_parse
+          - fuzz_hexsig_ndb
+          - fuzz_hashdb
+          - fuzz_zip_extract
+          - fuzz_gzip_extract
+          - fuzz_tar_extract
+          - fuzz_7z_extract
+          - fuzz_cab_extract
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: taiki-e/install-action@cargo-fuzz
+      - working-directory: fuzz
+        run: cargo fuzz run ${{ matrix.target }} -- -max_total_time=120
+      - name: Upload crash corpus on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crash-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}/
+          if-no-files-found: ignore

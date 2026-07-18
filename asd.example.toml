@@ -1,0 +1,39 @@
+# Example configuration for active-spectral-defense. Copy to asd.toml and
+# adjust paths for your deployment -- see README.md's "Wiring it up for
+# real" for how each of these gets produced/consumed.
+
+[nsm]
+# nsm's stdout (NDJSON alerts), redirected to a file this process tails.
+# Start nsm with, e.g.:
+#   nsm --simulate --xdp --xdp-control-socket /var/run/asd/nsm-control.sock \
+#       > /var/run/asd/nsm-alerts.ndjson
+alert_log_path = "/var/run/asd/nsm-alerts.ndjson"
+control_socket_path = "/var/run/asd/nsm-control.sock"
+
+[firewall]
+# The exact --config path rustwall was started with. This process
+# rewrites it in place (asd_confirmed_malicious alias) and SIGHUPs
+# rustwall to reload -- see asd-firewall-sync's docs on why a dedicated,
+# ASD-owned file is strongly recommended over a hand-annotated one.
+config_path = "/etc/rustwall/asd-managed.toml"
+pid = 0 # set to rustwall's real PID (or read it from a pidfile at startup)
+
+[clamav]
+quarantine_dir = "/var/lib/asd/quarantine"
+signature_ndb_paths = ["components/rust-clam/signatures/sample.ndb"]
+signature_hdb_paths = ["components/rust-clam/signatures/sample.hdb"]
+
+# One entry per host-attributed file-drop directory -- see
+# asd-clamav-bridge's docs on why this mapping has to be explicit.
+[[clamav.watch_targets]]
+path = "/var/lib/asd/dropzone/198.51.100.7"
+host = "198.51.100.7"
+
+[spectral]
+qdrant_url = "http://localhost:6334"
+blast_radius_depth = 2
+
+[response]
+min_severity = "high"    # ResponsePolicy's floor -- see siem-response
+allowlist = []             # hosts ResponsePolicy will never auto-block
+xdp_block_ttl_secs = 3600

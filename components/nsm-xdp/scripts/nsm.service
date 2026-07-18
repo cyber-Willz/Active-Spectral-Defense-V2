@@ -1,0 +1,53 @@
+[Unit]
+Description=nsm - Network Security Monitor (XDP fast path)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+# Pairs with main.rs's Watchdog::spawn_checker(interval=10s, ...): a
+# roughly 1:3 ping-to-timeout ratio, per systemd's own guidance. If
+# nsm misses WATCHDOG_INTERVAL_SECS worth of heartbeats (because its
+# event loop is genuinely wedged -- see main.rs's Watchdog doc comment
+# for exactly what this does and doesn't detect), systemd kills and
+# restarts it rather than leaving a stuck-but-alive process running
+# indefinitely, which is the specific failure mode this project hit
+# firsthand (a suspended process holding an XDP attachment with no one
+# managing it).
+WatchdogSec=30
+Restart=on-failure
+RestartSec=5
+
+# EDIT THESE for your environment:
+ExecStart=/usr/local/bin/nsm --interface eth0 --xdp \
+    --xdp-auto-block --xdp-auto-block-enforce \
+    --xdp-blocklist-persist /var/lib/nsm/blocklist.txt \
+    --xdp-control-socket /run/nsm/control.sock \
+    --xdp-force-detach
+
+# Belt-and-suspenders XDP cleanup. Shouldn't strictly be necessary --
+# a bpf_link-based attachment auto-detaches when the kernel closes the
+# process's file descriptors on ANY exit, including SIGKILL (see the
+# README's "What happens if nsm crashes or is killed" section) -- but
+# costs nothing to have as a second layer, and --xdp-force-detach on
+# the next start covers the case this somehow doesn't.
+ExecStopPost=-/usr/sbin/ip link set dev eth0 xdpgeneric off
+ExecStopPost=-/usr/sbin/ip link set dev eth0 xdpdrv off
+
+# Capabilities needed for the initial attach; nsm drops most of these
+# itself post-attach (see src/xdp/mod.rs::drop_privileges) but still
+# needs them granted here to begin with. AmbientCapabilities (rather
+# than running as root outright) is the standard systemd way to hand
+# a non-root service exactly the capabilities it needs -- swap
+# User=/Group= below to a dedicated non-root account if you go that
+# route; running as root works too (capabilities are still checked,
+# just less strictly), just without a system-account boundary.
+AmbientCapabilities=CAP_BPF CAP_NET_ADMIN CAP_NET_RAW
+CapabilityBoundingSet=CAP_BPF CAP_NET_ADMIN CAP_NET_RAW
+NoNewPrivileges=true
+
+RuntimeDirectory=nsm
+StateDirectory=nsm
+
+[Install]
+WantedBy=multi-user.target

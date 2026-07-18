@@ -1,0 +1,11 @@
+[package]
+name = "asd-firewall-sync"
+version = "0.1.0"
+edition = "2021"
+description = "Closes the 'rule sync' feedback arrow in the architecture diagram: confirmed-malicious hosts (from XDP enforcement / containment) get pushed upstream into rustwall's perimeter policy as a coarse alias-based block rule, then rustwall is asked to hot-reload via SIGHUP."
+
+[dependencies]
+toml = "0.8"
+serde = { version = "1", features = ["derive"] }
+thiserror = "1"
+tracing = "0.1"

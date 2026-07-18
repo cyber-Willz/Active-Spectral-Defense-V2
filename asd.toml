@@ -1,0 +1,25 @@
+[nsm]
+alert_log_path = "/var/run/asd/nsm-alerts.ndjson"
+control_socket_path = "/var/run/asd/nsm-control.sock"
+
+[firewall]
+config_path = "/etc/rustwall/asd-managed.toml"
+pid = 0  # placeholder -- fill in with the real rustwall PID once it is running (see README / runbook)
+
+[clamav]
+quarantine_dir = "/var/lib/asd/quarantine"
+signature_ndb_paths = ["components/rust-clam/signatures/sample.ndb"]
+signature_hdb_paths = ["components/rust-clam/signatures/sample.hdb"]
+
+[[clamav.watch_targets]]
+path = "/var/lib/asd/dropzone/198.51.100.7"
+host = "198.51.100.7"
+
+[spectral]
+qdrant_url = "http://localhost:6334"
+blast_radius_depth = 2
+
+[response]
+min_severity = "high"
+allowlist = []
+xdp_block_ttl_secs = 3600

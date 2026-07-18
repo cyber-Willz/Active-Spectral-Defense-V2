@@ -1,0 +1,13 @@
+[package]
+name = "siem-notify"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Best-effort outbound webhook notifications (n8n-compatible) for the review queue and correlation engine."
+
+[dependencies]
+review_queue = { path = "../review-queue" }
+ureq = { version = "2", default-features = false, features = ["tls", "json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1"

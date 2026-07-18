@@ -1,0 +1,13 @@
+[package]
+name = "siem-review"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Bridges siem-ml classifier predictions and siem-response's guarded active response through review-queue's human-in-the-loop audit gate."
+
+[dependencies]
+siem-core = { path = "../siem-core" }
+siem-ml = { path = "../siem-ml" }
+siem-response = { path = "../siem-response" }
+review_queue = { path = "../review-queue" }
+tracing = "0.1"

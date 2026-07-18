@@ -1,0 +1,13 @@
+[package]
+name = "siem-correlation"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Fan-in correlation engine: fuses XDP enforcement, ClamAV quarantine, and spectral anomaly scoring lanes into a per-host CorrelationVerdict for containment. Deliberately standalone (no dependency on siem-core) -- see crates/siem-correlation-bridge for the active-siem-specific wiring."
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
+tracing = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros", "test-util"] }

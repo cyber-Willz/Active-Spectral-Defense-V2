@@ -1,0 +1,17 @@
+[package]
+name = "siem-correlation-bridge"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Adapts active-siem's real detectors (siem-rules, siem-ml) onto siem-correlation's lane senders, and adapts CorrelationVerdict into siem-review's human-review gate."
+
+[dependencies]
+siem-core = { path = "../siem-core" }
+siem-correlation = { path = "../siem-correlation" }
+siem-review = { path = "../siem-review" }
+review_queue = { path = "../review-queue" }
+tracing = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
+siem-response = { path = "../siem-response" }
