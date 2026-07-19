@@ -144,3 +144,259 @@ dependency tree is large and the first build will take a while.
 - **Config reload of `firewall.pid`** is static in `asd.toml`; if
   `rustwall` restarts and gets a new PID, this needs updating (or the
   config, and this binary, extended to read a pidfile instead).
+
+
+
+# active-spectral-defense — end-to-end live run
+ 
+Concise command reference. Run everything from a Linux shell (native
+Linux, or WSL2). Each numbered daemon step should run in its own
+terminal, or backgrounded as shown.
+ 
+---
+ 
+## 0. Toolchain
+ 
+```bash
+# Rust >=1.85 required. Easiest path: rustup (sidesteps stale apt repos).
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env"
+rustc --version   # confirm >=1.85
+ 
+sudo apt-get update
+sudo apt-get install -y pkg-config libssl-dev postgresql
+```
+ 
+## 1. Unpack
+ 
+```bash
+mkdir -p ~/work && cd ~/work
+tar xzf active_spectral_defense_complete.tar.gz
+cd active_spectral_defense
+```
+ 
+## 2. Qdrant (real binary, not a stub)
+ 
+```bash
+cd ~/work
+curl -sL "https://github.com/qdrant/qdrant/releases/download/v1.18.3/qdrant-x86_64-unknown-linux-gnu.tar.gz" -o qdrant.tar.gz
+tar xzf qdrant.tar.gz && chmod +x qdrant
+mkdir -p qdrant_storage
+ 
+QDRANT__STORAGE__STORAGE_PATH=~/work/qdrant_storage \
+QDRANT__TELEMETRY_DISABLED=true \
+setsid nohup ./qdrant > ~/work/qdrant.log 2>&1 < /dev/null &
+ 
+sleep 4 && curl -s http://localhost:6333/    # expect {"title":"qdrant"...}
+```
+ 
+## 3. Build
+ 
+```bash
+cd ~/work/active_spectral_defense
+ 
+# bridges + spectral engine
+cargo build --release -p asd-xdp-bridge -p asd-clamav-bridge \
+  -p asd-spectral-bridge -p asd-firewall-sync
+ 
+# orchestrator (pulls in the vendored burn-core patch automatically)
+cargo build --release -p active-spectral-defense
+ 
+# containment demo harness (proves the containment -> firewall SIGHUP leg)
+cargo build --release -p containment-demo
+ 
+# rustwall — build from an isolated copy so its own [workspace] doesn't
+# collide with the parent workspace
+cp -r components/firewall-perimeter ~/work/rustwall_build
+(cd ~/work/rustwall_build && cargo build --release)
+ 
+# nsm
+(cd components/nsm-xdp && cargo build --release)
+```
+ 
+## 4. Runtime dirs, configs, permissions
+ 
+```bash
+sudo mkdir -p /var/run/asd /var/lib/asd/quarantine \
+  /var/lib/asd/dropzone/198.51.100.7 /etc/rustwall
+ 
+# Hand ownership to yourself -- avoids sudo on every later write/signal.
+sudo chown -R "$USER:$USER" /var/run/asd /var/lib/asd /etc/rustwall
+ 
+sudo tee /etc/rustwall/asd-managed.toml > /dev/null << 'EOF'
+queue_num = 0
+queue_workers = 2
+default_policy = "drop"
+log_max_per_sec = 200
+quarantine_max_entries = 100000
+sync_to_os_firewall = false
+trusted = ["10.0.0.1"]
+ 
+[[aliases]]
+name = "office"
+cidrs = ["10.0.0.0/24"]
+ 
+[[aliases]]
+name = "known_scanners"
+cidrs = ["198.51.100.0/24"]
+EOF
+```
+ 
+`asd.toml` (already shipped at the workspace root — edit `pid` after step 5):
+ 
+```bash
+cd ~/work/active_spectral_defense
+cat asd.toml   # confirm it exists; [firewall].pid gets patched next
+```
+ 
+## 5. Launch rustwall (real NFQUEUE bind)
+ 
+NFQUEUE needs `CAP_NET_ADMIN`/`CAP_NET_RAW`. Grant the capability once
+instead of running as root, so the process — and everything that later
+writes to its config or signals it — stays owned by your own user:
+ 
+```bash
+sudo setcap cap_net_admin,cap_net_raw+ep ~/work/rustwall_build/target/release/rustwall
+ 
+cd ~/work/rustwall_build
+setsid nohup ./target/release/rustwall --config /etc/rustwall/asd-managed.toml \
+  > ~/work/rustwall.log 2>&1 < /dev/null &
+ 
+sleep 2
+RWPID=$(pgrep -f "rustwall --config" | tail -1)   # tail -1: skip any sudo wrapper PIDs
+echo "rustwall pid: $RWPID"
+tail -5 ~/work/rustwall.log     # look for "nfqueue worker bound, entering packet loop"
+ 
+cd ~/work/active_spectral_defense
+sed -i "s/^pid = .*/pid = $RWPID/" asd.toml
+grep "^pid" asd.toml
+```
+ 
+> If `setcap` isn't available or NFQUEUE still refuses to bind (some
+> WSL2 kernels lack `nfnetlink_queue`), fall back to `sudo ./rustwall
+> --config ...` run in the foreground in a second terminal, and use
+> `sudo kill -HUP $RWPID` wherever a signal is needed later.
+ 
+## 6. Launch nsm (synthetic detection traffic)
+ 
+```bash
+cd ~/work/active_spectral_defense/components/nsm-xdp
+setsid nohup ./target/release/nsm --simulate \
+  > /var/run/asd/nsm-alerts.ndjson 2> ~/work/nsm.stderr.log < /dev/null &
+ 
+sleep 2
+wc -l /var/run/asd/nsm-alerts.ndjson   # expect ~67 lines; process exits when the scenario finishes -- that's normal
+```
+ 
+## 7. Launch the orchestrator
+ 
+```bash
+cd ~/work/active_spectral_defense
+RUST_LOG=info setsid nohup ./target/release/active-spectral-defense --config asd.toml \
+  > ~/work/orchestrator.log 2>&1 < /dev/null &
+ 
+sleep 5
+tail -f ~/work/orchestrator.log
+# Ctrl+C to stop watching -- the process itself keeps running in the background
+```
+ 
+You should see spectral bootstrap (`Pretraining autoencoder ...`), then
+real `[ANOMALY]` and `verdict handled` lines as nsm's alerts get scored
+and correlated.
+ 
+## 8. Trigger a live ClamAV detection
+ 
+```bash
+printf 'test malware payload' > /var/lib/asd/dropzone/198.51.100.7/live_drop.bin
+sleep 2
+grep quarantined ~/work/orchestrator.log
+ls /var/lib/asd/quarantine/
+```
+ 
+## 9. Exercise containment -> firewall-sync directly
+ 
+Verdicts in synthetic traffic typically stay below the 0.90
+auto-response threshold, so this step proves the containment leg
+directly rather than waiting on one to clear the review gate:
+ 
+```bash
+cd ~/work/active_spectral_defense
+RWPID=$(pgrep -f "rustwall --config" | tail -1)
+./target/release/containment-demo "$RWPID"
+ 
+tail -3 ~/work/rustwall.log      # look for "SIGHUP: rules reloaded"
+cat /etc/rustwall/asd-managed.toml   # confirmed-host alias + drop rule now present
+```
+ 
+---
+ 
+## 10. Persistence layer (Postgres + n8n alerting + Power BI)
+ 
+### 10a. Postgres
+ 
+```bash
+sudo -u postgres createuser -s "$USER" 2>/dev/null
+sudo -u postgres psql -c "ALTER USER $USER WITH PASSWORD 'asd';"
+sudo -u postgres createdb -O "$USER" asd
+psql -d asd -f ~/work/active_spectral_defense/persistence/schema.sql
+```
+ 
+### 10b. Ingester (tail logs -> Postgres, alert on high-signal events)
+ 
+Run once per log source — the orchestrator's log for verdicts/quarantine,
+rustwall's log for containment/SIGHUP events:
+ 
+```bash
+cd ~/work/active_spectral_defense/persistence/ingester
+npm install
+ 
+ASD_PG_URL="postgres://$USER:asd@localhost:5432/asd" \
+ASD_N8N_WEBHOOK="http://localhost:5678/webhook/asd-alerts" \
+setsid nohup node ingest.mjs ~/work/orchestrator.log \
+  > ~/work/ingester-orch.log 2>&1 < /dev/null &
+ 
+ASD_PG_URL="postgres://$USER:asd@localhost:5432/asd" \
+ASD_N8N_WEBHOOK="http://localhost:5678/webhook/asd-alerts" \
+setsid nohup node ingest.mjs ~/work/rustwall.log \
+  > ~/work/ingester-rustwall.log 2>&1 < /dev/null &
+```
+ 
+Verify:
+ 
+```bash
+psql -d asd -c "SELECT ts, host, disposition, confidence FROM verdicts ORDER BY ts;"
+psql -d asd -c "SELECT ts, file_path, signature FROM quarantine_events;"
+psql -d asd -c "SELECT ts, event_type, rule_count FROM containment_events;"
+```
+ 
+### 10c. n8n (alerting — Docker avoids the npm CDN dependency issue)
+ 
+```bash
+docker volume create n8n_data
+docker run -d --name n8n -p 5678:5678 -v n8n_data:/home/node/.n8n docker.n8n.io/n8nio/n8n
+```
+ 
+Open `http://localhost:5678` → create owner account → **Import from
+File** → `persistence/n8n-workflow-asd-alerts.json` → swap the two NoOp
+placeholder nodes for Slack/Email/Jira → **Activate**.
+ 
+### 10d. Power BI (on your Windows machine, not WSL2/Linux)
+ 
+**Get Data → PostgreSQL database** → server `localhost:5432` (or your
+WSL2 IP if unreachable directly — `ip addr show eth0` inside WSL2) →
+database `asd` → DirectQuery for live data. See
+`persistence/SETUP.md` for suggested visuals.
+ 
+---
+ 
+## Full teardown
+ 
+```bash
+pkill -f "active-spectral-defense --config"
+pkill -f "rustwall --config"
+pkill -f "nsm --simulate"
+pkill -f "ingest.mjs"
+pkill -f "./qdrant"
+sudo -u postgres pg_ctlcluster 16 main stop
+docker stop n8n
+```
